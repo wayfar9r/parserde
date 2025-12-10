@@ -94,6 +94,7 @@ pub trait DataProducer {
     fn produce_record(&mut self) -> Option<RecordProduceResult<Record>>;
 }
 
+/// Fields of data to match in input
 pub mod fields {
     pub mod str {
         pub const TX_ID: &str = "TX_ID";
@@ -258,6 +259,7 @@ impl TryFrom<&u8> for Status {
     }
 }
 
+/// Centralized data struct
 #[derive(Debug, PartialEq)]
 pub struct Record {
     pub(crate) tx_id: u64,
