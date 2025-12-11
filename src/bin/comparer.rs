@@ -2,6 +2,8 @@ use std::fs::File;
 
 use clap::{Parser, ValueEnum};
 
+use std::process::ExitCode;
+
 use parserde::build_reader;
 
 #[derive(Parser, Debug)]
@@ -34,30 +36,34 @@ impl From<InputFormat> for &str {
     }
 }
 
-fn main() {
+fn main() -> ExitCode {
     let args = Args::parse();
     let file1 = match File::open(args.file1) {
         Ok(f) => f,
         Err(e) => {
-            panic!("failed to open an input file1. {}", e);
+            eprintln!("failed to open an input file1. {}", e);
+            return ExitCode::FAILURE;
         }
     };
     let file2 = match File::open(args.file2) {
         Ok(f) => f,
         Err(e) => {
-            panic!("failed to open an input file2. {}", e);
+            eprintln!("failed to open an input file2. {}", e);
+            return ExitCode::FAILURE;
         }
     };
     let mut reader1 = match build_reader(file1, args.file1_format.into()) {
         Ok(r) => r,
         Err(e) => {
-            panic!("failed to create reader from file1. {}", e)
+            eprintln!("failed to create reader from file1. {}", e);
+            return ExitCode::FAILURE;
         }
     };
     let mut reader2 = match build_reader(file2, args.file2_format.into()) {
         Ok(r) => r,
         Err(e) => {
-            panic!("failed to create reader from file2. {}", e)
+            eprintln!("failed to create reader from file2. {}", e);
+            return ExitCode::FAILURE;
         }
     };
 
@@ -97,4 +103,5 @@ fn main() {
     } else {
         println!("Data in files are not identical");
     }
+    return ExitCode::SUCCESS;
 }
