@@ -51,21 +51,21 @@ fn main() -> ExitCode {
     let file2 = match File::open(args.file2) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("failed to open an input file2. {}", e);
+            error!("failed to open an input file2. {}", e);
             return ExitCode::FAILURE;
         }
     };
     let mut reader1 = match build_reader(file1, args.file1_format.into()) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("failed to create reader from file1. {}", e);
+            error!("failed to create reader from file1. {}", e);
             return ExitCode::FAILURE;
         }
     };
     let mut reader2 = match build_reader(file2, args.file2_format.into()) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("failed to create reader from file2. {}", e);
+            error!("failed to create reader from file2. {}", e);
             return ExitCode::FAILURE;
         }
     };
@@ -78,19 +78,19 @@ fn main() -> ExitCode {
                 let record1 = match result1 {
                     Ok(r1) => r1,
                     Err(e) => {
-                        println!("Failed to get record from file1. {}", e);
+                        info!("Failed to get record from file1. {}", e);
                         break false;
                     }
                 };
                 let record2 = match result2 {
                     Ok(r2) => r2,
                     Err(e) => {
-                        println!("Failed to get record from file2. {}", e);
+                        info!("Failed to get record from file2. {}", e);
                         break false;
                     }
                 };
                 if record1 != record2 {
-                    println!(
+                    info!(
                         "record from file1 {} not equal to record {} from file2",
                         record1, record2
                     );
