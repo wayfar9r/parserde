@@ -1,3 +1,4 @@
+/// sdfsdf
 use crate::bin::{BinReader, RecordBytes, RecordWrite as BinWrite};
 use crate::csv::{CsvReader, CsvSerialize, RecordWrite as CsvWrite};
 use crate::record::{DataProducer, RecordSerialize, RecordWriter, fields};
@@ -18,7 +19,7 @@ pub fn build_reader<T: Read + 'static>(
     format: &str,
 ) -> Result<Box<dyn DataProducer>, Box<dyn Error>> {
     Ok(match format {
-        "csv" => Box::new(CsvReader::new(reader, ",")?),
+        "csv" => Box::new(CsvReader::new(reader, b',')?),
         "txt" => Box::new(TxtReader::new(reader)?),
         "bin" => Box::new(BinReader::new(reader)?),
         _ => return Err(format!("given an unsupported format {}", format).into()),

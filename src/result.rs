@@ -7,8 +7,8 @@ use crate::error::{
 pub type RecordProduceResult<T> = Result<T, RecordProduceError>;
 /// Result of serialization data into bytes
 pub type RecordSerializeResult<T> = Result<T, RecordSerializeError>;
-pub type FieldParseResult<T> = Result<T, FieldParseError>;
-pub type RecordParseResult<T> = Result<T, RecordParseError>;
-pub type RecordReadResult<T> = Result<T, RecordReadError>;
-pub type ReaderCreateResult<T> = Result<T, ReaderCreateError>;
-pub type RecordWriteResult<T> = Result<T, RecordWriteError>;
+pub(crate) type FieldParseResult<T> = Result<T, FieldParseError>;
+pub(crate) type RecordParseResult<T> = Result<T, RecordParseError>;
+pub(crate) type RecordReadResult<T> = Result<T, RecordReadError>;
+pub(crate) type ReaderCreateResult<T> = Result<T, ReaderCreateError>;
+pub(crate) type RecordWriteResult<T> = Result<T, RecordWriteError>;

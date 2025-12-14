@@ -1,3 +1,3 @@
-pub mod bin;
-pub mod csv;
-pub mod txt;
+pub(crate) mod bin;
+pub(crate) mod csv;
+pub(crate) mod txt;

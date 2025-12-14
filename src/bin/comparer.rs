@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, path::PathBuf};
 
 use clap::{Parser, ValueEnum};
 
@@ -6,15 +6,18 @@ use std::process::ExitCode;
 
 use parserde::build_reader;
 
+use env_logger;
+use log::{error, info, warn};
+
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
     #[arg(long)]
-    file1: String,
+    file1: PathBuf,
     #[arg(long)]
     file1_format: InputFormat,
     #[arg(long)]
-    file2: String,
+    file2: PathBuf,
     #[arg(short, long)]
     file2_format: InputFormat,
 }
@@ -37,11 +40,12 @@ impl From<InputFormat> for &str {
 }
 
 fn main() -> ExitCode {
+    env_logger::init();
     let args = Args::parse();
     let file1 = match File::open(args.file1) {
         Ok(f) => f,
         Err(e) => {
-            eprintln!("failed to open an input file1. {}", e);
+            error!("failed to open an input file1. {}", e);
             return ExitCode::FAILURE;
         }
     };
@@ -99,9 +103,9 @@ fn main() -> ExitCode {
         }
     };
     if files_are_identical {
-        println!("Data in files are identical");
+        info!("Data in files are identical");
     } else {
-        println!("Data in files are not identical");
+        warn!("Data in files are not identical");
     }
-    return ExitCode::SUCCESS;
+    ExitCode::SUCCESS
 }

@@ -18,13 +18,15 @@ use crate::result::{
     RecordSerializeResult,
 };
 
-pub struct BinReader<T: Read> {
+const MAX_DESCRIPTION_LENGTH: u32 = 1048576; // 1 MIB
+
+pub(crate) struct BinReader<T: Read> {
     reader: BufReader<T>,
     is_exhausted: bool,
 }
 
 impl<T: Read> BinReader<T> {
-    pub fn new(reader: T) -> Result<BinReader<T>, Box<dyn Error>> {
+    pub(crate) fn new(reader: T) -> Result<BinReader<T>, Box<dyn Error>> {
         Ok(BinReader {
             reader: BufReader::new(reader),
             is_exhausted: false,
@@ -105,12 +107,10 @@ impl<T: Read> DataProducer for BinReader<T> {
         };
         match parse_body(result) {
             Ok(r) => Some(Ok(r)),
-            Err(e) => {
-                return Some(Err(RecordProduceError {
-                    text: "failed to parse record".into(),
-                    source: Some(Box::new(e)),
-                }));
-            }
+            Err(e) => Some(Err(RecordProduceError {
+                text: "failed to parse record".into(),
+                source: Some(Box::new(e)),
+            })),
         }
     }
 }
@@ -120,7 +120,7 @@ fn try_u64_from_bytes(bytes: &[u8]) -> Result<u64, TryFromSliceError> {
 }
 
 impl Field<&str, &[u8]> {
-    pub fn parse(&self) -> FieldParseResult<FieldValue> {
+    pub(crate) fn parse(&self) -> FieldParseResult<FieldValue> {
         Ok(match self.name {
             fields::str::TX_ID => {
                 FieldValue::TxId(try_u64_from_bytes(self.value).map_err(|_| FieldParseError {
@@ -167,7 +167,7 @@ impl Field<&str, &[u8]> {
             fields::str::TIMESTAMP => {
                 FieldValue::Timestamp(try_u64_from_bytes(self.value).map_err(|_| {
                     FieldParseError {
-                        text: format!("failed to parse timestamp"),
+                        text: "failed to parse timestamp".into(),
                         source: None,
                     }
                 })?)
@@ -191,6 +191,31 @@ impl Field<&str, &[u8]> {
 }
 
 fn parse_body(body: Vec<u8>) -> RecordParseResult<Record> {
+    if body.len() < 46 {
+        return Err(RecordParseError {
+            text: format!(
+                "inconsistent body length {} expected at least 45",
+                body.len()
+            ),
+            source: None,
+        });
+    }
+    let desc_len = try_u32_from_bytes(&body[42..46]).map_err(|e| RecordParseError {
+        text: "couldn't parse desc len".into(),
+        source: Some(Box::new(e)),
+    })?;
+    if desc_len > MAX_DESCRIPTION_LENGTH {
+        return Err(RecordParseError {
+            text: "descrption length is greater than the max limit 1 MIB".into(),
+            source: None,
+        });
+    }
+    if (46 + desc_len) as usize != body.len() {
+        return Err(RecordParseError {
+            text: "description length is incostinent".into(),
+            source: None,
+        });
+    }
     let fields_to_parse = [
         (fields::str::TX_ID, &body[0..8]),
         (fields::str::TX_TYPE, &body[8..9]),
@@ -209,14 +234,14 @@ fn parse_body(body: Vec<u8>) -> RecordParseResult<Record> {
         })?;
         fields.push(f);
     }
-    Ok(Record::try_from(fields).map_err(|e| RecordParseError {
+    Record::try_from(fields).map_err(|e| RecordParseError {
         text: "failed to parse record".into(),
         source: Some(e.into()),
-    })?)
+    })
 }
 
 #[derive(Debug)]
-pub struct RecordBytes;
+pub(crate) struct RecordBytes;
 
 impl RecordSerialize for RecordBytes {
     fn serialize(&self, record: &Record) -> RecordSerializeResult<Vec<u8>> {
@@ -236,19 +261,28 @@ impl RecordSerialize for RecordBytes {
     }
 }
 
-pub struct RecordWrite<W: Write> {
+pub(crate) struct RecordWrite<W: Write> {
     writer: W,
 }
 
 impl<W: Write> RecordWrite<W> {
-    pub fn new(writer: W) -> RecordWrite<W> {
+    pub(crate) fn new(writer: W) -> RecordWrite<W> {
         RecordWrite { writer }
     }
 }
 
 impl<W: Write> RecordWriter for RecordWrite<W> {
     fn write(&mut self, data: Vec<u8>) -> crate::result::RecordWriteResult<()> {
-        match self.writer.write(&data) {
+        match self.writer.write_all(&data) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(RecordWriteError {
+                    text: "failed to write data".into(),
+                    source: Some(Box::new(e)),
+                });
+            }
+        };
+        match self.writer.flush() {
             Ok(_) => Ok(()),
             Err(e) => Err(RecordWriteError {
                 text: "failed to write data".into(),
@@ -268,22 +302,22 @@ mod tests {
     fn test_read() {
         let record1 = Record::new(
             1,
-            TxType::DEPOSIT,
+            TxType::Deposit,
             2,
             3,
             1000,
             1000000000000,
-            Status::SUCCESS,
+            Status::Success,
             "Description 1".into(),
         );
         let record2 = Record::new(
             2,
-            TxType::WITHDRAWAL,
+            TxType::Withdrawal,
             6,
             5,
             1456,
             1000009000001,
-            Status::PENDING,
+            Status::Pending,
             "Description 2".into(),
         );
         let bin_ser = RecordBytes;

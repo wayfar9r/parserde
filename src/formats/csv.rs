@@ -1,7 +1,9 @@
 use std::{
     error::Error,
-    io::{BufRead, BufReader, Read, Write},
+    io::{Read, Write},
 };
+
+use csv::{Reader, ReaderBuilder, StringRecord};
 
 use crate::{
     error::RecordWriteError,
@@ -11,53 +13,39 @@ use crate::{
 use crate::error::{RecordProduceError, RecordReadError, RecordSerializeError};
 use crate::result::{RecordProduceResult, RecordReadResult, RecordSerializeResult};
 
-pub struct CsvReader<T: Read> {
-    pub(crate) reader: BufReader<T>,
-    pub(crate) order: Vec<String>,
-    pub(crate) separator: String,
+pub(crate) struct CsvReader<T: Read> {
+    pub(crate) reader: Reader<T>,
     pub(crate) current_line: u64,
     is_exhausted: bool,
 }
 
 impl<T: Read> CsvReader<T> {
-    pub fn new(reader: T, separator: &str) -> Result<CsvReader<T>, Box<dyn Error>> {
-        let mut buf_reader = BufReader::new(reader);
-        let fields = read_header(&mut buf_reader, separator)?;
+    pub(crate) fn new(reader: T, separator: u8) -> Result<CsvReader<T>, Box<dyn Error>> {
+        let reader = ReaderBuilder::new()
+            .delimiter(separator)
+            .from_reader(reader);
         Ok(CsvReader {
-            reader: buf_reader,
-            order: fields,
-            separator: separator.to_owned(),
+            reader,
             current_line: 0,
             is_exhausted: false,
         })
     }
 }
 
-fn read_header<T: Read>(
-    reader: &mut BufReader<T>,
-    separator: &str,
-) -> Result<Vec<String>, RecordReadError> {
-    let mut buf = String::new();
-    reader.read_line(&mut buf).map_err(|err| RecordReadError {
-        text: "couldn't read header".into(),
-        source: Some(Box::new(err)),
-    })?;
-    buf.pop();
-    Ok(buf
-        .split(separator)
-        .map(|s| s.to_owned())
-        .collect::<Vec<String>>())
-}
-
 impl<T: Read> DataConsumer for CsvReader<T> {
-    type Item = String;
+    type Item = StringRecord;
     fn read(&mut self) -> Option<RecordReadResult<Self::Item>> {
         if self.is_exhausted {
             return None;
         }
-        let mut buf = String::new();
-        let bytes_read = match self.reader.read_line(&mut buf) {
-            Ok(read) => read,
+        let mut string_record = StringRecord::new();
+        match self.reader.read_record(&mut string_record) {
+            Ok(not_done) => {
+                if !not_done {
+                    self.is_exhausted = true;
+                    return None;
+                }
+            }
             Err(err) => {
                 return Some(Err(RecordReadError {
                     text: format!("failed to read line {}", self.current_line),
@@ -65,15 +53,8 @@ impl<T: Read> DataConsumer for CsvReader<T> {
                 }));
             }
         };
-        if bytes_read == 0 {
-            self.is_exhausted = true;
-            return None;
-        }
         self.current_line += 1;
-        if buf.ends_with('\n') {
-            let _ = buf.pop();
-        }
-        Some(Ok(buf))
+        Some(Ok(string_record))
     }
 }
 
@@ -90,10 +71,17 @@ impl<T: Read> DataProducer for CsvReader<T> {
             }
         };
         let mut fields = Vec::new();
-        let mut value_iter = payload.split(&self.separator);
-        for f in self.order.iter() {
+        let mut value_iter = payload.iter();
+        let header = match self.reader.headers().map_err(|e| RecordProduceError {
+            text: "failed to read headers from csv file".into(),
+            source: Some(Box::new(e)),
+        }) {
+            Ok(r) => r,
+            Err(e) => return Some(Err(e)),
+        };
+        for f in header {
             match value_iter.next() {
-                Some(val) => match Field::new(f.as_str(), val).parse() {
+                Some(val) => match Field::new(f, val).parse() {
                     Ok(val) => fields.push(val),
                     Err(e) => {
                         return Some(Err(RecordProduceError {
@@ -112,23 +100,21 @@ impl<T: Read> DataProducer for CsvReader<T> {
         }
         match Record::try_from(fields) {
             Ok(r) => Some(Ok(r)),
-            Err(e) => {
-                return Some(Err(RecordProduceError {
-                    text: format!("couldn't parse record. near line {}", self.current_line),
-                    source: Some(e.into()),
-                }));
-            }
+            Err(e) => Some(Err(RecordProduceError {
+                text: format!("couldn't parse record. near line {}", self.current_line),
+                source: Some(e.into()),
+            })),
         }
     }
 }
 
-pub struct CsvSerialize<'a> {
+pub(crate) struct CsvSerialize<'a> {
     fields: &'a [&'a str],
     separator: &'a str,
 }
 
 impl<'a> CsvSerialize<'a> {
-    pub fn new(fields: &'a [&'a str], separator: &'a str) -> CsvSerialize<'a> {
+    pub(crate) fn new(fields: &'a [&'a str], separator: &'a str) -> CsvSerialize<'a> {
         CsvSerialize { fields, separator }
     }
 }
@@ -174,14 +160,14 @@ impl<'a> RecordSerialize for CsvSerialize<'a> {
     }
 }
 
-pub struct RecordWrite<'a, W: Write> {
+pub(crate) struct RecordWrite<'a, W: Write> {
     fields: &'a [&'a str],
     separator: String,
     writer: W,
 }
 
 impl<'a, W: Write> RecordWrite<'a, W> {
-    pub fn new(writer: W, fields: &'a [&'a str], separator: String) -> RecordWrite<'a, W> {
+    pub(crate) fn new(writer: W, fields: &'a [&'a str], separator: String) -> RecordWrite<'a, W> {
         RecordWrite {
             fields,
             writer,
@@ -193,21 +179,39 @@ impl<'a, W: Write> RecordWrite<'a, W> {
 impl<'a, W: Write> RecordWriter for RecordWrite<'a, W> {
     fn write_header(&mut self) -> crate::result::RecordWriteResult<()> {
         let mut header = self.fields.join(&self.separator).into_bytes();
-        header.push('\n' as u8);
-        match self.writer.write(&header) {
+        header.push(b'\n');
+        match self.writer.write_all(&header) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(RecordWriteError {
+                    text: "failed to write csv header".into(),
+                    source: Some(Box::new(e)),
+                });
+            }
+        };
+        match self.writer.flush() {
             Ok(_) => Ok(()),
             Err(e) => Err(RecordWriteError {
-                text: "failed to write csv header".into(),
+                text: "failed to write data".into(),
                 source: Some(Box::new(e)),
             }),
         }
     }
     fn write(&mut self, mut data: Vec<u8>) -> crate::result::RecordWriteResult<()> {
-        data.push('\n' as u8);
-        match self.writer.write(&data) {
+        data.push(b'\n');
+        match self.writer.write_all(&data) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(RecordWriteError {
+                    text: "failed to write data".into(),
+                    source: Some(Box::new(e)),
+                });
+            }
+        };
+        match self.writer.flush() {
             Ok(_) => Ok(()),
             Err(e) => Err(RecordWriteError {
-                text: "failed to write record".into(),
+                text: "failed to write data".into(),
                 source: Some(Box::new(e)),
             }),
         }
@@ -221,36 +225,74 @@ mod tests {
     use super::*;
 
     fn get_good_input() -> String {
-        "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
-1000000000000000,DEPOSIT,0,9223372036854775807,100,1633036860000,FAILURE,\"Record number 1
-1000000000000001,TRANSFER,9223372036854775807,9223372036854775807,200,1633036920000,PENDING,\"Record number 2".to_string()
+        "\
+TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
+1000000000000000,DEPOSIT,0,9223372036854775807,100,1633036860000,FAILURE,Record number 1
+1000000000000001,TRANSFER,9223372036854775807,9223372036854775807,200,1633036920000,PENDING,Record number 2".to_string()
+    }
+
+    #[test]
+    fn test_csv_lib() {
+        let data = "\
+TX_ID,TX_TYPE,FROM_USER_ID
+Boston,United States,4628910
+hewston,Australia,2
+        ";
+        let mut rdr = Reader::from_reader(Cursor::new(data.as_bytes()));
+        let mut record = StringRecord::new();
+
+        if rdr.read_record(&mut record).is_ok() {
+            assert_eq!(record.as_slice(), "BostonUnited States4628910");
+        } else {
+            panic!("expected at least one record but got none")
+        }
     }
 
     #[test]
     fn test_read() {
-        let input = Cursor::new(get_good_input());
-        let mut reader = CsvReader::new(input, ",").unwrap();
+        let input = Cursor::new(get_good_input().into_bytes());
+        let mut reader = CsvReader::new(input, ',' as u8).unwrap();
         let result = reader.read();
         assert!(result.is_some());
         let result = result.unwrap().unwrap();
         assert_eq!(
-            &result,
-            "1000000000000000,DEPOSIT,0,9223372036854775807,100,1633036860000,FAILURE,\"Record number 1"
+            result,
+            vec![
+                "1000000000000000",
+                "DEPOSIT",
+                "0",
+                "9223372036854775807",
+                "100",
+                "1633036860000",
+                "FAILURE",
+                "Record number 1"
+            ],
         );
         let result = reader.read();
         assert!(result.is_some());
         let result = result.unwrap().unwrap();
         assert_eq!(
-            &result,
-            "1000000000000001,TRANSFER,9223372036854775807,9223372036854775807,200,1633036920000,PENDING,\"Record number 2"
+            result,
+            vec![
+                "1000000000000001",
+                "TRANSFER",
+                "9223372036854775807",
+                "9223372036854775807",
+                "200",
+                "1633036920000",
+                "PENDING",
+                "Record number 2"
+            ]
         );
-        assert!(reader.read().is_none());
+        let r = reader.read();
+        println!("{:?}", r);
+        assert!(r.is_none());
     }
 
     #[test]
     fn test_produce_record() {
         let input = Cursor::new(get_good_input());
-        let mut reader = CsvReader::new(input, ",").unwrap();
+        let mut reader = CsvReader::new(input, ',' as u8).unwrap();
         let result = reader.produce_record();
         assert!(result.is_some());
         let result = result.unwrap().unwrap();

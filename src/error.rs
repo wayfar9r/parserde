@@ -19,7 +19,7 @@ impl Error for FieldParseError {
 }
 
 #[derive(Debug)]
-pub struct RecordReadError {
+pub(crate) struct RecordReadError {
     pub(crate) text: String,
     pub(crate) source: Option<Box<dyn Error>>,
 }
@@ -36,6 +36,7 @@ impl Error for RecordReadError {
     }
 }
 
+/// An error that occurs on converting structur to bytes
 #[derive(Debug)]
 pub struct RecordSerializeError {
     pub(crate) text: String,
@@ -84,7 +85,7 @@ impl Error for RecordProduceError {
 }
 
 #[derive(Debug)]
-pub struct RecordParseError {
+pub(crate) struct RecordParseError {
     pub(crate) text: String,
     pub(crate) source: Option<Box<dyn Error>>,
 }
@@ -110,7 +111,7 @@ impl Error for RecordParseError {
 }
 
 #[derive(Debug)]
-pub struct ReaderCreateError {
+pub(crate) struct ReaderCreateError {
     pub(crate) text: String,
     pub(crate) source: Option<Box<dyn Error>>,
 }
@@ -135,28 +136,38 @@ impl Error for ReaderCreateError {
     }
 }
 
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+#[error("write error: {text}")]
 pub struct RecordWriteError {
     pub(crate) text: String,
+    #[source]
     pub(crate) source: Option<Box<dyn Error>>,
 }
 
-impl Display for RecordWriteError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}. source {}",
-            self.text,
-            match &self.source {
-                Some(err) => err.to_string(),
-                None => "none".into(),
-            }
-        )
-    }
-}
+// #[derive(Debug)]
+// pub struct RecordWriteError {
+//     pub(crate) text: String,
+//     pub(crate) source: Option<Box<dyn Error>>,
+// }
 
-impl Error for RecordWriteError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source.as_deref()
-    }
-}
+// impl Display for RecordWriteError {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(
+//             f,
+//             "{}. source {}",
+//             self.text,
+//             match &self.source {
+//                 Some(err) => err.to_string(),
+//                 None => "none".into(),
+//             }
+//         )
+//     }
+// }
+
+// impl Error for RecordWriteError {
+//     fn source(&self) -> Option<&(dyn Error + 'static)> {
+//         self.source.as_deref()
+//     }
+// }

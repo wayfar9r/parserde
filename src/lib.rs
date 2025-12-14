@@ -1,3 +1,10 @@
+#![warn(unreachable_pub)]
+#![warn(missing_docs)]
+
+//! A simple library with utilities for
+//! parsing, serializing, converting and comparing data
+//! in csv, bin and txt formats.
+
 mod builder;
 mod error;
 mod formats;

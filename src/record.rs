@@ -7,13 +7,13 @@ use crate::result::{
 };
 
 #[derive(Debug)]
-pub struct Field<F, V> {
+pub(crate) struct Field<F, V> {
     pub(crate) name: F,
     pub(crate) value: V,
 }
 
 impl Field<&str, &str> {
-    pub fn parse(&self) -> FieldParseResult<FieldValue> {
+    pub(crate) fn parse(&self) -> FieldParseResult<FieldValue> {
         Ok(match self.name.as_bytes() {
             fields::byte::TX_ID => {
                 FieldValue::TxId(self.value.parse().map_err(|err| FieldParseError {
@@ -22,19 +22,15 @@ impl Field<&str, &str> {
                 })?)
             }
             fields::byte::TX_TYPE => {
-                FieldValue::TxType(TxType::try_from(&self.value[..]).map_err(|err| {
-                    FieldParseError {
-                        text: "failed to parse tx_type".into(),
-                        source: Some(err.into()),
-                    }
+                FieldValue::TxType(TxType::try_from(self.value).map_err(|err| FieldParseError {
+                    text: "failed to parse tx_type".into(),
+                    source: Some(err.into()),
                 })?)
             }
             fields::byte::STATUS => {
-                FieldValue::Status(Status::try_from(&self.value[..]).map_err(|err| {
-                    FieldParseError {
-                        text: "failed to parse status".into(),
-                        source: Some(err.into()),
-                    }
+                FieldValue::Status(Status::try_from(self.value).map_err(|err| FieldParseError {
+                    text: "failed to parse status".into(),
+                    source: Some(err.into()),
                 })?)
             }
             fields::byte::FROM_USER => {
@@ -57,7 +53,7 @@ impl Field<&str, &str> {
             }
             fields::byte::TIMESTAMP => {
                 FieldValue::Timestamp(self.value.parse().map_err(|err| FieldParseError {
-                    text: format!("failed to parse timestamp"),
+                    text: "failed to parse timestamp".into(),
                     source: Some(Box::new(err)),
                 })?)
             }
@@ -73,7 +69,7 @@ impl Field<&str, &str> {
 }
 
 impl<F, V> Field<F, V> {
-    pub fn new(name: F, value: V) -> Field<F, V> {
+    pub(crate) fn new(name: F, value: V) -> Field<F, V> {
         Field { name, value }
     }
 }
@@ -84,7 +80,7 @@ impl<F: Display, V: Display> Display for Field<F, V> {
     }
 }
 
-pub trait DataConsumer {
+pub(crate) trait DataConsumer {
     type Item;
     fn read(&mut self) -> Option<RecordReadResult<Self::Item>>;
 }
@@ -96,24 +92,42 @@ pub trait DataProducer {
 
 /// Fields of data to match in input
 pub mod fields {
+    /// a list of const fields as slice
     pub mod str {
+        /// ID
         pub const TX_ID: &str = "TX_ID";
+        /// Transaction type
         pub const TX_TYPE: &str = "TX_TYPE";
+        /// Status
         pub const STATUS: &str = "STATUS";
+        /// From user
         pub const FROM_USER: &str = "FROM_USER_ID";
+        /// To user
         pub const TO_USER: &str = "TO_USER_ID";
+        /// Timestamp
         pub const TIMESTAMP: &str = "TIMESTAMP";
+        /// Amount
         pub const AMOUNT: &str = "AMOUNT";
+        /// Descrption
         pub const DESCRIPTION: &str = "DESCRIPTION";
     }
+    /// A list of const fields as bytes
     pub mod byte {
+        /// Id
         pub const TX_ID: &[u8] = b"TX_ID";
+        /// Transaction type
         pub const TX_TYPE: &[u8] = b"TX_TYPE";
+        /// Status
         pub const STATUS: &[u8] = b"STATUS";
+        /// From user
         pub const FROM_USER: &[u8] = b"FROM_USER_ID";
+        /// To user
         pub const TO_USER: &[u8] = b"TO_USER_ID";
+        /// Timestamp
         pub const TIMESTAMP: &[u8] = b"TIMESTAMP";
+        /// Amount
         pub const AMOUNT: &[u8] = b"AMOUNT";
+        /// Descrption
         pub const DESCRIPTION: &[u8] = b"DESCRIPTION";
     }
 }
@@ -131,9 +145,9 @@ pub enum FieldValue {
 
 #[derive(Debug, PartialEq)]
 pub enum TxType {
-    DEPOSIT,
-    TRANSFER,
-    WITHDRAWAL,
+    Deposit,
+    Transfer,
+    Withdrawal,
 }
 
 impl Display for TxType {
@@ -142,9 +156,9 @@ impl Display for TxType {
             f,
             "{}",
             match self {
-                TxType::DEPOSIT => "DEPOSIT",
-                TxType::TRANSFER => "TRANSFER",
-                TxType::WITHDRAWAL => "WITHDRAWAL",
+                TxType::Deposit => "DEPOSIT",
+                TxType::Transfer => "TRANSFER",
+                TxType::Withdrawal => "WITHDRAWAL",
             }
         )
     }
@@ -152,9 +166,9 @@ impl Display for TxType {
 
 #[derive(Debug, PartialEq)]
 pub enum Status {
-    SUCCESS,
-    FAILURE,
-    PENDING,
+    Success,
+    Failure,
+    Pending,
 }
 
 impl Display for Status {
@@ -163,9 +177,9 @@ impl Display for Status {
             f,
             "{}",
             match self {
-                Status::FAILURE => "FAILURE",
-                Status::PENDING => "PENDING",
-                Status::SUCCESS => "SUCCESS",
+                Status::Failure => "FAILURE",
+                Status::Pending => "PENDING",
+                Status::Success => "SUCCESS",
             }
         )
     }
@@ -175,9 +189,9 @@ impl TryFrom<&u8> for TxType {
     type Error = String;
     fn try_from(value: &u8) -> Result<Self, Self::Error> {
         Ok(match value {
-            0 => TxType::DEPOSIT,
-            1 => TxType::TRANSFER,
-            2 => TxType::WITHDRAWAL,
+            0 => TxType::Deposit,
+            1 => TxType::Transfer,
+            2 => TxType::Withdrawal,
             _ => return Err("couldn't convert byte to tx_type".to_string()),
         })
     }
@@ -186,9 +200,9 @@ impl TryFrom<&u8> for TxType {
 impl From<&TxType> for u8 {
     fn from(value: &TxType) -> Self {
         match value {
-            TxType::DEPOSIT => 0,
-            TxType::TRANSFER => 1,
-            TxType::WITHDRAWAL => 2,
+            TxType::Deposit => 0,
+            TxType::Transfer => 1,
+            TxType::Withdrawal => 2,
         }
     }
 }
@@ -197,9 +211,9 @@ impl TryFrom<&str> for TxType {
     type Error = String;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Ok(match value {
-            "DEPOSIT" => TxType::DEPOSIT,
-            "TRANSFER" => TxType::TRANSFER,
-            "WITHDRAWAL" => TxType::WITHDRAWAL,
+            "DEPOSIT" => TxType::Deposit,
+            "TRANSFER" => TxType::Transfer,
+            "WITHDRAWAL" => TxType::Withdrawal,
             _ => return Err("invalid TxType".to_string()),
         })
     }
@@ -208,9 +222,9 @@ impl TryFrom<&str> for TxType {
 impl From<TxType> for &str {
     fn from(value: TxType) -> Self {
         match value {
-            TxType::DEPOSIT => "DEPOSIT",
-            TxType::WITHDRAWAL => "WITHDRAWAL",
-            TxType::TRANSFER => "TRANSFER",
+            TxType::Deposit => "DEPOSIT",
+            TxType::Withdrawal => "WITHDRAWAL",
+            TxType::Transfer => "TRANSFER",
         }
     }
 }
@@ -218,9 +232,9 @@ impl From<TxType> for &str {
 impl From<&Status> for u8 {
     fn from(value: &Status) -> Self {
         match value {
-            Status::SUCCESS => 0,
-            Status::FAILURE => 1,
-            Status::PENDING => 2,
+            Status::Success => 0,
+            Status::Failure => 1,
+            Status::Pending => 2,
         }
     }
 }
@@ -229,9 +243,9 @@ impl TryFrom<&str> for Status {
     type Error = String;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Ok(match value {
-            "SUCCESS" => Status::SUCCESS,
-            "FAILURE" => Status::FAILURE,
-            "PENDING" => Status::PENDING,
+            "SUCCESS" => Status::Success,
+            "FAILURE" => Status::Failure,
+            "PENDING" => Status::Pending,
             _ => return Err("unknown status".to_string()),
         })
     }
@@ -240,9 +254,9 @@ impl TryFrom<&str> for Status {
 impl From<Status> for &str {
     fn from(value: Status) -> Self {
         match value {
-            Status::FAILURE => "FAILURE",
-            Status::SUCCESS => "STATUS",
-            Status::PENDING => "PENDING",
+            Status::Failure => "FAILURE",
+            Status::Success => "STATUS",
+            Status::Pending => "PENDING",
         }
     }
 }
@@ -251,9 +265,9 @@ impl TryFrom<&u8> for Status {
     type Error = String;
     fn try_from(value: &u8) -> Result<Self, Self::Error> {
         Ok(match value {
-            0 => Status::SUCCESS,
-            1 => Status::FAILURE,
-            2 => Status::PENDING,
+            0 => Status::Success,
+            1 => Status::Failure,
+            2 => Status::Pending,
             _ => return Err("couldn't convert status to byte".to_string()),
         })
     }
@@ -273,6 +287,7 @@ pub struct Record {
 }
 
 impl Record {
+    /// Create new record instance
     pub fn new(
         tx_id: u64,
         tx_type: TxType,
@@ -300,12 +315,12 @@ impl Default for Record {
     fn default() -> Self {
         Record {
             tx_id: u64::default(),
-            tx_type: TxType::DEPOSIT,
+            tx_type: TxType::Deposit,
             from_user: u64::default(),
             to_user: u64::default(),
             amount: u64::default(),
             timestamp: u64::default(),
-            status: Status::PENDING,
+            status: Status::Pending,
             description: "".to_string(),
         }
     }
@@ -334,7 +349,7 @@ impl TryFrom<Data<String>> for FieldValue {
     type Error = FieldParseError;
     fn try_from(mut field: Data<String>) -> FieldParseResult<FieldValue> {
         let del_pos = field.0.find(':');
-        if let None = del_pos {
+        if del_pos.is_none() {
             return Err(FieldParseError {
                 text: "no delimiter found".into(),
                 source: None,

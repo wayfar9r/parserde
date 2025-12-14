@@ -7,14 +7,14 @@ use crate::record::{
 use crate::error::{RecordProduceError, RecordReadError, RecordSerializeError, RecordWriteError};
 use crate::result::{ReaderCreateResult, RecordProduceResult, RecordReadResult};
 
-pub struct TxtReader<T: Read> {
+pub(crate) struct TxtReader<T: Read> {
     pub(crate) reader: BufReader<T>,
     current_line: u64,
     is_exhausted: bool,
 }
 
 impl<T: Read> TxtReader<T> {
-    pub fn new(reader: T) -> ReaderCreateResult<TxtReader<T>> {
+    pub(crate) fn new(reader: T) -> ReaderCreateResult<TxtReader<T>> {
         Ok(TxtReader {
             reader: BufReader::new(reader),
             current_line: 0,
@@ -55,12 +55,10 @@ impl<T: Read> DataConsumer for TxtReader<T> {
         let read_result = self.read_payload()?;
         match read_result {
             Ok(r) => Some(Ok(r)),
-            Err(e) => {
-                return Some(Err(RecordReadError {
-                    text: "couldn't read data".to_string(),
-                    source: Some(Box::new(e)),
-                }));
-            }
+            Err(e) => Some(Err(RecordReadError {
+                text: "couldn't read data".to_string(),
+                source: Some(Box::new(e)),
+            })),
         }
     }
 }
@@ -89,7 +87,7 @@ impl<T: Read> DataProducer for TxtReader<T> {
                 }
             }
         }
-        if fields.len() == 0 {
+        if fields.is_empty() {
             return None;
         }
         match Record::try_from(fields) {
@@ -102,7 +100,7 @@ impl<T: Read> DataProducer for TxtReader<T> {
     }
 }
 
-pub struct TxtSerialize;
+pub(crate) struct TxtSerialize;
 
 impl RecordSerialize for TxtSerialize {
     fn serialize(&self, record: &Record) -> Result<Vec<u8>, RecordSerializeError> {
@@ -120,24 +118,32 @@ impl RecordSerialize for TxtSerialize {
     }
 }
 
-pub struct RecordWrite<W: Write> {
+pub(crate) struct RecordWrite<W: Write> {
     writer: W,
 }
 
 impl<W: Write> RecordWrite<W> {
-    pub fn new(writer: W) -> RecordWrite<W> {
+    pub(crate) fn new(writer: W) -> RecordWrite<W> {
         RecordWrite { writer }
     }
 }
 
 impl<W: Write> RecordWriter for RecordWrite<W> {
     fn write(&mut self, mut data: Vec<u8>) -> crate::result::RecordWriteResult<()> {
-        data.push('\n' as u8);
-        // data.push('\n' as u8);
-        match self.writer.write(&data) {
+        data.push(b'\n');
+        match self.writer.write_all(&data) {
+            Ok(_) => (),
+            Err(e) => {
+                return Err(RecordWriteError {
+                    text: "failed to write data".into(),
+                    source: Some(Box::new(e)),
+                });
+            }
+        };
+        match self.writer.flush() {
             Ok(_) => Ok(()),
             Err(e) => Err(RecordWriteError {
-                text: "failed to write record".into(),
+                text: "failed to write data".into(),
                 source: Some(Box::new(e)),
             }),
         }
