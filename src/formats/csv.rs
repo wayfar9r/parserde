@@ -251,7 +251,7 @@ hewston,Australia,2
     #[test]
     fn test_read() {
         let input = Cursor::new(get_good_input().into_bytes());
-        let mut reader = CsvReader::new(input, ',' as u8).unwrap();
+        let mut reader = CsvReader::new(input, b',').unwrap();
         let result = reader.read();
         assert!(result.is_some());
         let result = result.unwrap().unwrap();
@@ -292,7 +292,7 @@ hewston,Australia,2
     #[test]
     fn test_produce_record() {
         let input = Cursor::new(get_good_input());
-        let mut reader = CsvReader::new(input, ',' as u8).unwrap();
+        let mut reader = CsvReader::new(input, b',').unwrap();
         let result = reader.produce_record();
         assert!(result.is_some());
         let result = result.unwrap().unwrap();

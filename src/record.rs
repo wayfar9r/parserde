@@ -288,6 +288,7 @@ pub struct Record {
 
 impl Record {
     /// Create new record instance
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tx_id: u64,
         tx_type: TxType,
