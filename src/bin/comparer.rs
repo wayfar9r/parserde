@@ -6,7 +6,6 @@ use std::process::ExitCode;
 
 use parserde::build_reader;
 
-use env_logger;
 use log::{error, info, warn};
 
 #[derive(Parser, Debug)]
