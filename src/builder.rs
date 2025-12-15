@@ -79,7 +79,7 @@ pub fn build_writer<W: Write + 'static>(
                 fields::str::STATUS,
                 fields::str::DESCRIPTION,
             ],
-            ",".into(),
+            b'\n',
         )),
         "txt" => Box::new(TxtWrite::new(writer)),
         "bin" => Box::new(BinWrite::new(writer)),

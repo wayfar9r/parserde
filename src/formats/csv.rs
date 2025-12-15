@@ -162,12 +162,12 @@ impl<'a> RecordSerialize for CsvSerialize<'a> {
 
 pub(crate) struct RecordWrite<'a, W: Write> {
     fields: &'a [&'a str],
-    separator: String,
+    separator: u8,
     writer: W,
 }
 
 impl<'a, W: Write> RecordWrite<'a, W> {
-    pub(crate) fn new(writer: W, fields: &'a [&'a str], separator: String) -> RecordWrite<'a, W> {
+    pub(crate) fn new(writer: W, fields: &'a [&'a str], separator: u8) -> RecordWrite<'a, W> {
         RecordWrite {
             fields,
             writer,
@@ -178,7 +178,13 @@ impl<'a, W: Write> RecordWrite<'a, W> {
 
 impl<'a, W: Write> RecordWriter for RecordWrite<'a, W> {
     fn write_header(&mut self) -> crate::result::RecordWriteResult<()> {
-        let mut header = self.fields.join(&self.separator).into_bytes();
+        let header = self
+            .fields
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<String>>();
+        let header = header.join(&self.separator.to_string());
+        let mut header = header.into_bytes();
         header.push(b'\n');
         match self.writer.write_all(&header) {
             Ok(_) => (),
